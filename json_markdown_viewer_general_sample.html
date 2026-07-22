@@ -1,0 +1,607 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>JSON Markdown Viewer</title>
+
+  <!-- Markdown parser -->
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <!-- HTML sanitizer -->
+  <script src="https://cdn.jsdelivr.net/npm/dompurify/dist/purify.min.js"></script>
+
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0b1020;
+      --panel: #11182b;
+      --panel-soft: #161f35;
+      --border: #29344f;
+      --text: #e8edf7;
+      --muted: #9ca9c2;
+      --accent: #7c9cff;
+      --accent-soft: rgba(124, 156, 255, 0.14);
+      --danger: #ff7b8b;
+      --success: #68d391;
+      --code: #0a0f1d;
+      --shadow: 0 18px 50px rgba(0, 0, 0, 0.28);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background:
+        radial-gradient(circle at top left, rgba(124, 156, 255, 0.12), transparent 32rem),
+        var(--bg);
+      color: var(--text);
+      font-family:
+        Pretendard, "Noto Sans KR", Inter, system-ui, -apple-system,
+        BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    button,
+    textarea {
+      font: inherit;
+    }
+
+    .app {
+      width: min(1500px, 100%);
+      min-height: 100vh;
+      margin: 0 auto;
+      padding: 24px;
+      display: grid;
+      grid-template-columns: minmax(340px, 0.9fr) minmax(420px, 1.1fr);
+      gap: 20px;
+    }
+
+    .panel {
+      min-width: 0;
+      min-height: calc(100vh - 48px);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      background: rgba(17, 24, 43, 0.94);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(12px);
+    }
+
+    .panel-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 18px 20px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .title-wrap {
+      min-width: 0;
+    }
+
+    h1,
+    h2 {
+      margin: 0;
+    }
+
+    .panel-title {
+      font-size: 17px;
+      font-weight: 750;
+      letter-spacing: -0.02em;
+    }
+
+    .panel-description {
+      margin: 5px 0 0;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.5;
+    }
+
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      justify-content: flex-end;
+    }
+
+    .button {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 9px 13px;
+      color: var(--text);
+      background: var(--panel-soft);
+      cursor: pointer;
+      transition: 150ms ease;
+    }
+
+    .button:hover {
+      border-color: var(--accent);
+      transform: translateY(-1px);
+    }
+
+    .button.primary {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #081020;
+      font-weight: 750;
+    }
+
+    .editor-wrap {
+      position: relative;
+      flex: 1;
+      min-height: 0;
+      padding: 16px;
+    }
+
+    #jsonInput {
+      width: 100%;
+      height: 100%;
+      min-height: 560px;
+      resize: none;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      outline: none;
+      padding: 18px;
+      background: var(--code);
+      color: #d9e4ff;
+      font-family: "JetBrains Mono", "SFMono-Regular", Consolas, monospace;
+      font-size: 14px;
+      line-height: 1.65;
+      tab-size: 2;
+      transition: border-color 150ms ease, box-shadow 150ms ease;
+    }
+
+    #jsonInput:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 4px var(--accent-soft);
+    }
+
+    .status-bar {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      min-height: 43px;
+      padding: 10px 18px;
+      border-top: 1px solid var(--border);
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .status.error {
+      color: var(--danger);
+    }
+
+    .status.success {
+      color: var(--success);
+    }
+
+    .output {
+      flex: 1;
+      min-height: 0;
+      overflow: auto;
+      padding: 18px;
+    }
+
+    .empty {
+      height: 100%;
+      min-height: 420px;
+      display: grid;
+      place-items: center;
+      text-align: center;
+      color: var(--muted);
+      border: 1px dashed var(--border);
+      border-radius: 14px;
+      padding: 30px;
+    }
+
+    .result-grid {
+      display: grid;
+      gap: 14px;
+    }
+
+    .field-card {
+      min-width: 0;
+      overflow: hidden;
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      background: rgba(22, 31, 53, 0.72);
+    }
+
+    .field-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 13px 16px;
+      border-bottom: 1px solid var(--border);
+      background: rgba(255, 255, 255, 0.018);
+    }
+
+    .field-key {
+      min-width: 0;
+      color: #bdd0ff;
+      font-family: "JetBrains Mono", "SFMono-Regular", Consolas, monospace;
+      font-size: 13px;
+      font-weight: 750;
+      overflow-wrap: anywhere;
+    }
+
+    .type-badge {
+      flex: 0 0 auto;
+      padding: 4px 8px;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      color: var(--muted);
+      background: var(--code);
+      font-size: 11px;
+      text-transform: uppercase;
+    }
+
+    .field-content {
+      padding: 17px 18px;
+      overflow-wrap: anywhere;
+    }
+
+    .markdown {
+      line-height: 1.75;
+    }
+
+    .markdown > :first-child {
+      margin-top: 0;
+    }
+
+    .markdown > :last-child {
+      margin-bottom: 0;
+    }
+
+    .markdown h1,
+    .markdown h2,
+    .markdown h3,
+    .markdown h4 {
+      margin: 1.4em 0 0.55em;
+      line-height: 1.35;
+      letter-spacing: -0.025em;
+    }
+
+    .markdown h1 { font-size: 1.55rem; }
+    .markdown h2 { font-size: 1.32rem; }
+    .markdown h3 { font-size: 1.14rem; }
+
+    .markdown p {
+      margin: 0.75em 0;
+    }
+
+    .markdown ul,
+    .markdown ol {
+      margin: 0.8em 0;
+      padding-left: 1.45em;
+    }
+
+    .markdown li {
+      margin: 0.35em 0;
+    }
+
+    .markdown strong {
+      color: #ffffff;
+    }
+
+    .markdown a {
+      color: #9db5ff;
+    }
+
+    .markdown blockquote {
+      margin: 1em 0;
+      padding: 10px 14px;
+      border-left: 4px solid var(--accent);
+      background: var(--accent-soft);
+      color: #cdd8ee;
+    }
+
+    .markdown code {
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 0.12em 0.38em;
+      background: var(--code);
+      color: #d9e4ff;
+      font-family: "JetBrains Mono", "SFMono-Regular", Consolas, monospace;
+      font-size: 0.9em;
+    }
+
+    .markdown pre {
+      overflow-x: auto;
+      margin: 1em 0;
+      padding: 14px;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: var(--code);
+    }
+
+    .markdown pre code {
+      border: 0;
+      padding: 0;
+      background: transparent;
+    }
+
+    .markdown table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 1em 0;
+      font-size: 14px;
+    }
+
+    .markdown th,
+    .markdown td {
+      border: 1px solid var(--border);
+      padding: 9px 11px;
+      text-align: left;
+    }
+
+    .markdown th {
+      background: var(--code);
+    }
+
+    .json-value {
+      overflow-x: auto;
+      margin: 0;
+      padding: 14px;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: var(--code);
+      color: #d9e4ff;
+      font-family: "JetBrains Mono", "SFMono-Regular", Consolas, monospace;
+      font-size: 13px;
+      line-height: 1.65;
+      white-space: pre-wrap;
+    }
+
+    .primitive-value {
+      display: inline-flex;
+      align-items: center;
+      min-height: 36px;
+      padding: 7px 11px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: var(--code);
+      font-family: "JetBrains Mono", "SFMono-Regular", Consolas, monospace;
+    }
+
+    @media (max-width: 900px) {
+      .app {
+        grid-template-columns: 1fr;
+        padding: 12px;
+      }
+
+      .panel {
+        min-height: auto;
+      }
+
+      #jsonInput {
+        min-height: 390px;
+      }
+
+      .output {
+        min-height: 450px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <section class="panel">
+      <header class="panel-header">
+        <div class="title-wrap">
+          <h1 class="panel-title">JSON 입력</h1>
+          <p class="panel-description">객체의 문자열 값은 Markdown으로 렌더링됩니다.</p>
+        </div>
+
+        <div class="actions">
+          <button class="button" id="sampleButton" type="button">샘플</button>
+          <button class="button" id="formatButton" type="button">정렬</button>
+          <button class="button primary" id="renderButton" type="button">렌더링</button>
+        </div>
+      </header>
+
+      <div class="editor-wrap">
+        <textarea id="jsonInput" spellcheck="false" aria-label="JSON 입력"></textarea>
+      </div>
+
+      <footer class="status-bar">
+        <span id="status" class="status">JSON을 입력하세요.</span>
+        <span><kbd>Ctrl</kbd> + <kbd>Enter</kbd> 실행</span>
+      </footer>
+    </section>
+
+    <section class="panel">
+      <header class="panel-header">
+        <div class="title-wrap">
+          <h2 class="panel-title">렌더링 결과</h2>
+          <p class="panel-description">각 키를 카드로 분리해 표시합니다.</p>
+        </div>
+      </header>
+
+      <div id="output" class="output">
+        <div class="empty">
+          왼쪽에 JSON을 입력한 뒤<br />
+          <strong>렌더링</strong> 버튼을 누르세요.
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const sampleData = {
+      title: "**프로젝트 진행 안내**",
+      answer: `이번 주 프로젝트 진행 사항은 다음과 같습니다.
+
+- **기획 검토**: 주요 요구사항 정리 완료
+- **화면 개발**: 메인 화면과 상세 화면 작업 중
+- **테스트 일정**: 다음 주 월요일부터 시작
+- 발견된 문제는 담당자에게 공유한 뒤 우선순위에 따라 처리합니다.
+- 최종 결과물은 검토가 끝난 후 배포할 예정입니다.
+
+> 일정은 진행 상황에 따라 변경될 수 있습니다.`,
+      status: "진행 중",
+      progress: 65,
+      tags: ["프로젝트", "일정", "업무 공유"],
+      members: [
+        "김민수",
+        "이서연",
+        "박지훈"
+      ],
+      metadata: {
+        projectId: "PROJECT-001",
+        updatedAt: "2026-07-22",
+        reviewed: true
+      }
+    };
+
+    const input = document.getElementById("jsonInput");
+    const output = document.getElementById("output");
+    const status = document.getElementById("status");
+    const renderButton = document.getElementById("renderButton");
+    const formatButton = document.getElementById("formatButton");
+    const sampleButton = document.getElementById("sampleButton");
+
+    marked.setOptions({
+      gfm: true,
+      breaks: true
+    });
+
+    function setStatus(message, type = "") {
+      status.textContent = message;
+      status.className = `status ${type}`.trim();
+    }
+
+    function getType(value) {
+      if (value === null) return "null";
+      if (Array.isArray(value)) return "array";
+      return typeof value;
+    }
+
+    function createCard(key, value) {
+      const card = document.createElement("article");
+      card.className = "field-card";
+
+      const header = document.createElement("div");
+      header.className = "field-header";
+
+      const keyElement = document.createElement("div");
+      keyElement.className = "field-key";
+      keyElement.textContent = key;
+
+      const badge = document.createElement("span");
+      badge.className = "type-badge";
+      badge.textContent = getType(value);
+
+      header.append(keyElement, badge);
+
+      const content = document.createElement("div");
+      content.className = "field-content";
+
+      if (typeof value === "string") {
+        const markdown = document.createElement("div");
+        markdown.className = "markdown";
+
+        // marked로 Markdown을 HTML로 바꾸고 DOMPurify로 정화합니다.
+        const unsafeHtml = marked.parse(value);
+        markdown.innerHTML = DOMPurify.sanitize(unsafeHtml);
+
+        content.appendChild(markdown);
+      } else if (value !== null && typeof value === "object") {
+        const pre = document.createElement("pre");
+        pre.className = "json-value";
+        pre.textContent = JSON.stringify(value, null, 2);
+        content.appendChild(pre);
+      } else {
+        const primitive = document.createElement("span");
+        primitive.className = "primitive-value";
+        primitive.textContent = String(value);
+        content.appendChild(primitive);
+      }
+
+      card.append(header, content);
+      return card;
+    }
+
+    function renderJson() {
+      try {
+        const parsed = JSON.parse(input.value);
+
+        if (parsed === null || Array.isArray(parsed) || typeof parsed !== "object") {
+          throw new Error("최상위 JSON은 객체 형태여야 합니다. 예: {\"answer\":\"...\"}");
+        }
+
+        const entries = Object.entries(parsed);
+        output.replaceChildren();
+
+        if (entries.length === 0) {
+          output.innerHTML = '<div class="empty">표시할 키가 없습니다.</div>';
+          setStatus("빈 객체입니다.", "success");
+          return;
+        }
+
+        const grid = document.createElement("div");
+        grid.className = "result-grid";
+
+        for (const [key, value] of entries) {
+          grid.appendChild(createCard(key, value));
+        }
+
+        output.appendChild(grid);
+        setStatus(`${entries.length}개 키를 렌더링했습니다.`, "success");
+      } catch (error) {
+        output.innerHTML = `
+          <div class="empty">
+            <div>
+              <strong style="color: var(--danger)">JSON 파싱 오류</strong><br /><br />
+              ${escapeHtml(error.message)}
+            </div>
+          </div>
+        `;
+        setStatus(error.message, "error");
+      }
+    }
+
+    function formatJson() {
+      try {
+        const parsed = JSON.parse(input.value);
+        input.value = JSON.stringify(parsed, null, 2);
+        setStatus("JSON을 정렬했습니다.", "success");
+      } catch (error) {
+        setStatus(error.message, "error");
+      }
+    }
+
+    function loadSample() {
+      input.value = JSON.stringify(sampleData, null, 2);
+      renderJson();
+    }
+
+    function escapeHtml(value) {
+      return String(value)
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
+    }
+
+    renderButton.addEventListener("click", renderJson);
+    formatButton.addEventListener("click", formatJson);
+    sampleButton.addEventListener("click", loadSample);
+
+    input.addEventListener("keydown", (event) => {
+      if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
+        renderJson();
+      }
+    });
+
+    loadSample();
+  </script>
+</body>
+</html>
