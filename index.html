@@ -371,6 +371,88 @@
       font-family: "JetBrains Mono", "SFMono-Regular", Consolas, monospace;
     }
 
+    .nested-grid {
+      display: grid;
+      gap: 10px;
+    }
+
+    .nested-item {
+      min-width: 0;
+      overflow: hidden;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: rgba(10, 15, 29, 0.42);
+    }
+
+    .nested-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .collapsible-header {
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .collapsible-header:hover {
+      background: var(--accent-soft);
+    }
+
+    .collapsible-header:focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: -2px;
+    }
+
+    .header-main {
+      min-width: 0;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .collapse-icon {
+      flex: 0 0 auto;
+      width: 1em;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1;
+      text-align: center;
+      transition: transform 150ms ease;
+    }
+
+    .is-collapsed > .field-header,
+    .is-collapsed > .nested-header {
+      border-bottom-color: transparent;
+    }
+
+    .is-collapsed > .field-content,
+    .is-collapsed > .nested-content {
+      display: none;
+    }
+
+    .nested-key {
+      min-width: 0;
+      color: #bdd0ff;
+      font-family: "JetBrains Mono", "SFMono-Regular", Consolas, monospace;
+      font-size: 12px;
+      font-weight: 700;
+      overflow-wrap: anywhere;
+    }
+
+    .nested-content {
+      padding: 12px;
+    }
+
+    .empty-value {
+      color: var(--muted);
+      font-size: 13px;
+      font-style: italic;
+    }
+
     @media (max-width: 900px) {
       .app {
         grid-template-columns: 1fr;
@@ -484,6 +566,112 @@
       return typeof value;
     }
 
+    function createBadge(value) {
+      const badge = document.createElement("span");
+      badge.className = "type-badge";
+      badge.textContent = getType(value);
+      return badge;
+    }
+
+    function isExpandable(value) {
+      return value !== null && typeof value === "object" && Object.keys(value).length > 0;
+    }
+
+    function makeCollapsible(container, header, content, label) {
+      header.classList.add("collapsible-header");
+      header.setAttribute("role", "button");
+      header.setAttribute("tabindex", "0");
+      header.setAttribute("aria-expanded", "true");
+      header.setAttribute("aria-label", `${label} 접기`);
+
+      const icon = document.createElement("span");
+      icon.className = "collapse-icon";
+      icon.textContent = "▼";
+      icon.setAttribute("aria-hidden", "true");
+
+      const firstChild = header.firstElementChild;
+      if (firstChild) {
+        const main = document.createElement("div");
+        main.className = "header-main";
+        header.insertBefore(main, firstChild);
+        main.append(icon, firstChild);
+      }
+
+      const toggle = () => {
+        const collapsed = container.classList.toggle("is-collapsed");
+        header.setAttribute("aria-expanded", String(!collapsed));
+        header.setAttribute("aria-label", `${label} ${collapsed ? "펼치기" : "접기"}`);
+        icon.textContent = collapsed ? "▶" : "▼";
+      };
+
+      header.addEventListener("click", toggle);
+      header.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          toggle();
+        }
+      });
+    }
+
+    function renderValue(value) {
+      if (typeof value === "string") {
+        const markdown = document.createElement("div");
+        markdown.className = "markdown";
+
+        // 모든 깊이의 문자열을 Markdown으로 렌더링하고 정화합니다.
+        const unsafeHtml = marked.parse(value);
+        markdown.innerHTML = DOMPurify.sanitize(unsafeHtml);
+        return markdown;
+      }
+
+      if (value !== null && typeof value === "object") {
+        const entries = Array.isArray(value)
+          ? value.map((item, index) => [String(index), item])
+          : Object.entries(value);
+
+        if (entries.length === 0) {
+          const empty = document.createElement("div");
+          empty.className = "empty-value";
+          empty.textContent = Array.isArray(value) ? "빈 배열" : "빈 객체";
+          return empty;
+        }
+
+        const grid = document.createElement("div");
+        grid.className = "nested-grid";
+
+        for (const [key, childValue] of entries) {
+          const item = document.createElement("section");
+          item.className = "nested-item";
+
+          const header = document.createElement("div");
+          header.className = "nested-header";
+
+          const keyElement = document.createElement("div");
+          keyElement.className = "nested-key";
+          keyElement.textContent = Array.isArray(value) ? `[${key}]` : key;
+
+          header.append(keyElement, createBadge(childValue));
+
+          const content = document.createElement("div");
+          content.className = "nested-content";
+          content.appendChild(renderValue(childValue));
+
+          item.append(header, content);
+          if (isExpandable(childValue)) {
+            makeCollapsible(item, header, content, keyElement.textContent);
+          }
+          grid.appendChild(item);
+        }
+
+        return grid;
+      }
+
+      const primitive = document.createElement("span");
+      primitive.className = "primitive-value";
+      primitive.textContent = value === null ? "null" : String(value);
+      return primitive;
+    }
+
     function createCard(key, value) {
       const card = document.createElement("article");
       card.className = "field-card";
@@ -495,37 +683,16 @@
       keyElement.className = "field-key";
       keyElement.textContent = key;
 
-      const badge = document.createElement("span");
-      badge.className = "type-badge";
-      badge.textContent = getType(value);
-
-      header.append(keyElement, badge);
+      header.append(keyElement, createBadge(value));
 
       const content = document.createElement("div");
       content.className = "field-content";
-
-      if (typeof value === "string") {
-        const markdown = document.createElement("div");
-        markdown.className = "markdown";
-
-        // marked로 Markdown을 HTML로 바꾸고 DOMPurify로 정화합니다.
-        const unsafeHtml = marked.parse(value);
-        markdown.innerHTML = DOMPurify.sanitize(unsafeHtml);
-
-        content.appendChild(markdown);
-      } else if (value !== null && typeof value === "object") {
-        const pre = document.createElement("pre");
-        pre.className = "json-value";
-        pre.textContent = JSON.stringify(value, null, 2);
-        content.appendChild(pre);
-      } else {
-        const primitive = document.createElement("span");
-        primitive.className = "primitive-value";
-        primitive.textContent = String(value);
-        content.appendChild(primitive);
-      }
+      content.appendChild(renderValue(value));
 
       card.append(header, content);
+      if (isExpandable(value)) {
+        makeCollapsible(card, header, content, key);
+      }
       return card;
     }
 
